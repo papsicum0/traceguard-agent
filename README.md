@@ -62,7 +62,7 @@ Adversaries routinely leverage public Git commit telemetry (names, internal emai
 ### 1. Clone & Set Up Virtual Environment
 
 ```bash
-git clone [https://github.com/priyanshujha12/traceguard-agent.git](https://github.com/priyanshujha12/traceguard-agent.git)
+git clone https://github.com/priyanshujha12/traceguard-agent.git
 cd traceguard-agent
 python3 -m venv venv
 source venv/bin/activate
