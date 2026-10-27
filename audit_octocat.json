@@ -1,0 +1,39 @@
+{
+  "target": "octocat",
+  "timestamp_utc": "2026-10-27T12:51:34.352449+00:00",
+  "observations": {
+    "git_recon": {
+      "target": "octocat",
+      "exposed_emails": [],
+      "exposed_names": [],
+      "active_repositories": [],
+      "commit_count_scanned": 0,
+      "error": null
+    },
+    "breaches": [],
+    "dns_audits": [
+      {
+        "domain": "octocat.com",
+        "has_spf": true,
+        "spf_record": "v=spf1 include:_spf.protonmail.ch mx ~all",
+        "has_dmarc": true,
+        "dmarc_record": "v=DMARC1; p=quarantine",
+        "vulnerabilities": []
+      }
+    ]
+  },
+  "threat_synthesis": {
+    "cvss_score": 0.0,
+    "risk_grade": "LOW",
+    "vulnerabilities": [],
+    "attack_chain_summary": "No high-severity exposure vectors discovered."
+  },
+  "cryptographic_seal": "b05bd813b03bc493e75f087f56f5d28229ce7f1555ee9a70be2c9333bf495620",
+  "audit_log": [
+    "[12:51:31] Initiating autonomous perimeter reconnaissance against target: octocat",
+    "[12:51:31] Dispatching Tool: probe_public_commit_exposure",
+    "[12:51:32] No plaintext emails found in recent commits. Auditing target domain directly if applicable.",
+    "[12:51:34] Synthesizing Adversarial Attack Graph & CVSS exposure...",
+    "[12:51:34] Computing SHA-256 canonical cryptographic seal..."
+  ]
+}
