@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-10-29T21:57:37.064514+00:00",
+  "target_repository": ".",
+  "cvss_score": 3.3,
+  "risk_grade": "MEDIUM",
+  "probe_metrics": {
+    "active": true,
+    "layer": 16,
+    "activation_norm": 8.35,
+    "tamper_detected": false
+  },
+  "vulnerabilities": [
+    {
+      "severity": "MEDIUM",
+      "finding": "Committer email address is publicly exposed, potentially allowing unauthorized access to the repository.",
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+      "remediation": "Verify the committer's email address and ensure it is not publicly exposed. Consider using a more secure authentication method, such as SSH keys."
+    }
+  ],
+  "remediation_patches": [],
+  "ledger_integrity_sha256": "84ecc5fc4b9e5b663873a4e39fd1e619904bc4f3df4aa0765525dfee9466587b"
+}
