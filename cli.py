@@ -118,11 +118,26 @@ def scan(
             console.print(f"    SPF Record: [{s_color}]{item.get('spf')}[/{s_color}]")
             console.print(f"    DMARC Record: [{m_color}]{item.get('dmarc')}[/{m_color}]")
 
+    # Filter out managed/no-reply perimeters from payload so LLM does not hallucinate spoofing vectors
+    filtered_dns_results = [
+        r for r in dns_results
+        if not ("noreply.github.com" in r.get("domain", "") or r.get("status") == "managed")
+    ]
+
+    # Filter out internal/managed GitHub no-reply addresses from remote LLM prompt to prevent spoofing false positives
+    filtered_authors = [
+        a for a in authors
+        if not (isinstance(a, dict) and "noreply.github.com" in a.get("email", ""))
+        and not (isinstance(a, str) and "noreply.github.com" in a)
+    ]
+    if not filtered_authors:
+        filtered_authors = authors
+
     # 3. Remote Threat Synthesis via Modal A10G GPU
     payload = {
         "repo_path": repo_path,
-        "authors": authors,
-        "perimeter_audit": dns_results
+        "authors": filtered_authors,
+        "perimeter_audit": filtered_dns_results
     }
 
     report = None
@@ -154,6 +169,16 @@ def scan(
             title="🔬 Layer 16 Mechanistic Interpretability Probe",
             border_style="magenta"
         ))
+
+        # 4.5 Execute Secret & Credential Scanning
+    secret_findings = scan_secrets(repo_path)
+    if secret_findings:
+        if "vulnerabilities" not in report or not isinstance(report["vulnerabilities"], list):
+            report["vulnerabilities"] = []
+        report["vulnerabilities"].extend(secret_findings)
+        report["cvss_score"] = 9.8
+        report["risk_grade"] = "CRITICAL"
+        report["attack_chain_summary"] = "CRITICAL: Plaintext credentials / high-entropy secrets discovered in repository tree. High risk of supply chain takeover."
 
     # 5. Render Threat Assessment Panel
     score = report.get("cvss_score", 8.1)

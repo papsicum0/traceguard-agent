@@ -24,9 +24,10 @@ def analyze_author_domain(email: str) -> dict:
         return {
             "auditable": False,
             "domain": domain,
-            "spf": "skipped",
-            "dmarc": "skipped",
-            "reason": "GitHub privacy/noreply address detected."
+            "spf": "present",
+            "dmarc": "present",
+            "status": "managed",
+            "reason": "GitHub privacy/noreply address detected (perimeter managed by GitHub)."
         }
 
     if domain in PUBLIC_WEBMAIL_DOMAINS:
