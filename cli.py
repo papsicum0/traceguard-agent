@@ -1,3 +1,5 @@
+import hashlib
+from datetime import datetime, timezone
 import sys
 import json
 import re
@@ -37,6 +39,39 @@ def parse_llm_json(raw_text: str) -> dict:
         ]
     }
 
+
+def scan_secrets(repo_path: str = ".") -> list:
+    import os
+    secret_patterns = [
+        (r"(?i)modal[_-]token[_-]secret\s*[:=]\s*['\"]?(as-[a-zA-Z0-9]{20,})", "Modal Token Secret"),
+        (r"(?i)modal[_-]token[_-]id\s*[:=]\s*['\"]?(ak-[a-zA-Z0-9]{20,})", "Modal Token ID"),
+        (r"ghp_[0-9a-zA-Z]{36}", "GitHub Personal Access Token"),
+        (r"gho_[0-9a-zA-Z]{36}", "GitHub OAuth Token"),
+        (r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----", "Private Key Header"),
+        (r"(?i)api[_-]?key\s*[:=]\s*['\"][a-zA-Z0-9_\-]{20,}['\"]", "Generic High-Entropy API Key"),
+    ]
+    findings = []
+    ignore_dirs = {".git", "venv", ".venv", "__pycache__", ".modal"}
+    for root, dirs, files in os.walk(repo_path):
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        for f in files:
+            if f.endswith((".py", ".env", ".json", ".yml", ".yaml", ".toml")):
+                filepath = os.path.join(root, f)
+                try:
+                    with open(filepath, "r", errors="ignore") as handle:
+                        for idx, line in enumerate(handle, 1):
+                            for pattern, desc in secret_patterns:
+                                if re.search(pattern, line):
+                                    findings.append({
+                                        "severity": "CRITICAL",
+                                        "finding": f"Exposed credential ({desc}) in {f}:{idx}",
+                                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N",
+                                        "remediation": f"Revoke token and purge {f} from git history."
+                                    })
+                except Exception:
+                    pass
+    return findings
+
 @app.command()
 def scan(
     repo_path: str = typer.Argument(".", help="Path to target git repository"),
@@ -49,6 +84,12 @@ def scan(
         False,
         "--probe",
         help="Activate Layer 16 mechanistic probe telemetry"
+    ),
+    export: Optional[str] = typer.Option(
+        None,
+        "--export",
+        "-o",
+        help="Path to export cryptographic audit ledger"
     )
 ):
     console.print(Panel.fit(
@@ -160,6 +201,32 @@ def scan(
             for patch in item["patches"]:
                 console.print(f"• [cyan]{patch['type']}[/cyan] [yellow]{patch['fqdn']}[/yellow]")
                 console.print(f"  Value: [bold white]{patch['value']}[/bold white]")
+
+        # 7.5. Cryptographic Audit Ledger
+    if export:
+        ledger_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "target_repository": repo_path,
+            "cvss_score": report.get("cvss_score", 0.0),
+            "risk_grade": report.get("risk_grade", "UNKNOWN"),
+            "probe_metrics": probe_metrics,
+            "vulnerabilities": report.get("vulnerabilities", []),
+            "remediation_patches": remediation_patches
+        }
+        canonical_bytes = json.dumps(ledger_data, sort_keys=True).encode("utf-8")
+        integrity_hash = hashlib.sha256(canonical_bytes).hexdigest()
+        ledger_data["ledger_integrity_sha256"] = integrity_hash
+
+        with open(export, "w") as f_out:
+            json.dump(ledger_data, f_out, indent=2)
+
+        console.print(Panel(
+            f"[bold green]✔ Cryptographic Ledger Generated[/bold green]\n"
+            f"[bold cyan]File:[/bold cyan] {export}\n"
+            f"[bold cyan]SHA-256 Digest:[/bold cyan] [dim]{integrity_hash}[/dim]",
+            title="TraceGuard Tamper-Evident Ledger",
+            border_style="green"
+        ))
 
     # 8. CI/CD Gate Enforcement
     if fail_on:
