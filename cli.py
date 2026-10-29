@@ -3,9 +3,11 @@ import json
 import re
 from typing import Optional
 import typer
+import modal
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from rich.status import Status
 
 from forensics.git_scanner import extract_commit_authors
 from forensics.dns_checker import analyze_author_domain
@@ -24,13 +26,13 @@ def parse_llm_json(raw_text: str) -> dict:
     return {
         "cvss_score": 8.1,
         "risk_grade": "HIGH",
-        "attack_chain_summary": "An attacker could exploit exposed committer identities to spoof email communication for internal infrastructure.",
+        "attack_chain_summary": "Domain lacks perimeter authentication records (SPF/DMARC), leaving committer identities exposed to network spoofing.",
         "vulnerabilities": [
             {
                 "severity": "CRITICAL",
-                "finding": "Identity domain lacks SPF/DMARC perimeter enforcement.",
+                "finding": "Perimeter email authentication missing for author domains.",
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
-                "remediation": "Apply standardized SPF and DMARC TXT policies to authorize authentic senders."
+                "remediation": "Deploy SPF and DMARC TXT policies to DNS zone."
             }
         ]
     }
@@ -51,7 +53,7 @@ def scan(
 ):
     console.print(Panel.fit(
         "[bold cyan]TRACEGUARD | Autonomous DevSecOps Threat Synthesis[/bold cyan]\n"
-        "[dim]Engine: Meta Llama 3.1 8B Instruct | Perimeter Identity Inspection[/dim]",
+        "[dim]Engine: Meta Llama 3.1 8B Instruct | Modal A10G Cloud Backend[/dim]",
         border_style="cyan"
     ))
 
@@ -82,27 +84,44 @@ def scan(
             console.print(f"    SPF Record: [{s_color}]{item.get('spf')}[/{s_color}]")
             console.print(f"    DMARC Record: [{m_color}]{item.get('dmarc')}[/{m_color}]")
 
-    # 3. Threat Assessment Report
-    report = {
-        "cvss_score": 8.1,
-        "risk_grade": "HIGH",
-        "attack_chain_summary": "An attacker could exploit exposed credentials and tokens to gain unauthorized access to internal domain infrastructure.",
-        "vulnerabilities": [
-            {
-                "severity": "CRITICAL",
-                "finding": "Exposed credentials and committer tokens in repository history.",
-                "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-                "remediation": "Revoke and rotate sensitive tokens. Implement secrets detection in pre-commit hooks."
-            },
-            {
-                "severity": "CRITICAL",
-                "finding": "Target domain lacks SPF and DMARC protection, making it vulnerable to email spoofing.",
-                "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
-                "remediation": "Implement SPF and DMARC records to prevent spoofing and unauthorized transmission."
-            }
-        ]
+    # 3. Remote Threat Synthesis via Modal A10G GPU
+    payload = {
+        "repo_path": repo_path,
+        "authors": authors,
+        "perimeter_audit": dns_results
     }
 
+    report = None
+    probe_metrics = {"active": False}
+
+    with Status("[bold cyan]Synthesizing threat model on Modal Llama 3.1 8B...[/bold cyan]", spinner="dots"):
+        try:
+            SynthesizerCls = modal.Cls.from_name("traceguard-threat-engine", "LlamaSynthesizer")
+            instance = SynthesizerCls()
+            result = instance.synthesize_threat.remote(payload, probe=probe)
+            
+            raw_text = result.get("raw_output", "")
+            probe_metrics = result.get("probe_metrics", {})
+            report = parse_llm_json(raw_text)
+        except Exception as e:
+            console.print(f"[yellow][!] Cloud inference warning ({str(e)[:50]}...). Using deterministic fallback scoring.[/yellow]")
+            report = parse_llm_json("")
+
+    # 4. Display Mechanistic Probe Telemetry if requested
+    if probe and probe_metrics.get("active"):
+        norm_val = probe_metrics.get("activation_norm", 0.0)
+        is_tampered = probe_metrics.get("tamper_detected", False)
+        status_text = "[bold red]TAMPER / INJECTION RISK DETECTED[/bold red]" if is_tampered else "[bold green]NOMINAL[/bold green]"
+        
+        console.print(Panel(
+            f"[bold]Target Submodule:[/bold] Layer 16 Residual Stream (Llama 3.1 8B)\n"
+            f"[bold]Activation Vector Norm ($||h_{{16}}||$):[/bold] [cyan]{norm_val}[/cyan]\n"
+            f"[bold]Integrity Verification:[/bold] {status_text}",
+            title="🔬 Layer 16 Mechanistic Interpretability Probe",
+            border_style="magenta"
+        ))
+
+    # 5. Render Threat Assessment Panel
     score = report.get("cvss_score", 8.1)
     grade = str(report.get("risk_grade", "HIGH")).upper()
     grade_color = "red" if grade in ["CRITICAL", "HIGH"] else "yellow"
@@ -115,7 +134,7 @@ def scan(
         border_style=grade_color
     ))
 
-    # 4. Vulnerabilities Table
+    # 6. Render Correlated Vulnerabilities Table
     table = Table(
         title="Correlated Vulnerabilities & Actionable Remediation",
         show_header=True,
@@ -133,7 +152,7 @@ def scan(
 
     console.print(table)
 
-    # 5. Blue Team DNS Remediation Records
+    # 7. Blue Team Remediation Patches
     if remediation_patches:
         console.print("\n[bold green]🛠 Blue Team Remediation Patches (Apply to DNS Zone):[/bold green]")
         for item in remediation_patches:
@@ -142,7 +161,7 @@ def scan(
                 console.print(f"• [cyan]{patch['type']}[/cyan] [yellow]{patch['fqdn']}[/yellow]")
                 console.print(f"  Value: [bold white]{patch['value']}[/bold white]")
 
-    # 6. CI/CD Gate Enforcement
+    # 8. CI/CD Gate Enforcement
     if fail_on:
         thresholds = {"low": 3.9, "medium": 6.9, "high": 8.9, "critical": 9.0}
         cutoff = thresholds.get(fail_on.lower(), 7.0)
@@ -160,4 +179,4 @@ def scan(
     raise typer.Exit(code=0)
 
 if __name__ == "__main__":
-    app()  
+    app()

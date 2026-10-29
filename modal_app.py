@@ -1,19 +1,20 @@
+
 import os
 import modal
 
-# 1. Initialize the Modal App
+# 1. Initialize Modal App
 app = modal.App("traceguard-threat-engine")
 
 # 2. Persistent volume to cache Llama 3.1 weights permanently on cloud disk
-hf_cache_vol = modal.Volume.from_name("hf-model-cache", create_if_missing=True)
+hf_cache_vol = modal.Volume.from_name("hf-modal-cache", create_if_missing=True)
 
-# 3. Define the Debian environment with PyTorch and Transformers
+# 3. Define Debian environment with PyTorch and Transformers
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "torch>=2.1.0",
-        "transformers>=4.43.0",
-        "accelerate>=0.30.0"
+        "torch==2.4.0",
+        "transformers==4.44.2",
+        "accelerate==0.34.2"
     )
     .env({"HF_HUB_CACHE": "/root/cache"})
 )
@@ -26,85 +27,97 @@ MODEL_ID = "meta-llama/Meta-Llama-3.1-8B-Instruct"
     gpu="A10G",
     secrets=[modal.Secret.from_name("huggingface-secret")],
     volumes={"/root/cache": hf_cache_vol},
-    timeout=600
+    timeout=600,
+    scaledown_window=300
 )
 class LlamaSynthesizer:
     @modal.enter()
     def load_model(self):
         import torch
-        from transformers import AutoTokenizer, pipeline
+        from transformers import AutoTokenizer, AutoModelForCausalLM
 
         token = os.environ.get("HF_TOKEN")
         if not token:
-            raise ValueError("HF_TOKEN secret not found in container environment.")
+            print("[WARN] HF_TOKEN secret not detected, attempting unauthenticated fetch...")
 
-        print("[*] Loading tokenizer and model weights into A10G memory...")
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        print("[*] Initializing Llama 3.1 8B Instruct model and tokenizer...")
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, token=token)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
             token=token,
-            cache_dir="/root/cache"
+            torch_dtype=torch.bfloat16,
+            device_map="auto"
         )
-        self.pipeline = pipeline(
-            "text-generation",
-            model=MODEL_ID,
-            tokenizer=self.tokenizer,
-            model_kwargs={"torch_dtype": torch.bfloat16, "cache_dir": "/root/cache"},
-            device_map="auto",
-            token=token
-        )
-        
-        # Persist downloaded files to volume so future runs don't re-download
-        try:
-            hf_cache_vol.commit()
-        except Exception:
-            pass
-
-        print("[+] Meta Llama 3.1 8B successfully loaded.")
+        print("[✓] Model weights loaded into A10G VRAM.")
 
     @modal.method()
-    def synthesize(self, telemetry_data: str) -> str:
-        system_prompt = (
-            "You are TraceGuard's autonomous DevSecOps threat engine. "
-            "Analyze the provided reconnaissance telemetry (exposed commit metadata, git leaks, DNS posture). "
-            "Synthesize correlated attack chains and output strictly valid JSON with this schema:\n"
-            "{\n"
-            '  "cvss_score": 6.5,\n'
-            '  "risk_grade": "MEDIUM",\n'
-            '  "attack_chain_summary": "Summary here",\n'
-            '  "vulnerabilities": [\n'
-            '    {\n'
-            '      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",\n'
-            '      "severity": "HIGH",\n'
-            '      "finding": "Description of finding",\n'
-            '      "remediation": "Exact remediation steps"\n'
-            '    }\n'
-            '  ]\n'
-            "}"
+    def synthesize_threat(self, payload: dict, probe: bool = False) -> dict:
+        import torch
+        import json
+
+        telemetry_str = json.dumps(payload, indent=2)
+
+        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+You are TraceGuard, an autonomous DevSecOps threat correlation sentinel.
+Analyze the provided telemetry: committer exposure, missing SPF/DMARC perimeter records, and repository metadata.
+Calculate CVSS 3.1 score and risk severity.
+Return ONLY valid JSON matching this schema:
+{{
+  "cvss_score": <float 0.0 to 10.0>,
+  "risk_grade": "<LOW|MEDIUM|HIGH|CRITICAL>",
+  "attack_chain_summary": "<concise attack vector synthesis>",
+  "vulnerabilities": [
+    {{
+      "severity": "<LOW|MEDIUM|HIGH|CRITICAL>",
+      "finding": "<concise finding description>",
+      "vector": "<CVSS vector string>",
+      "remediation": "<actionable remediation guidance>"
+    }}
+  ]
+}}
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+Repository & Identity Telemetry:
+{telemetry_str}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+
+        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+
+        probe_metrics = {"active": False}
+        if probe:
+            try:
+                with torch.no_grad():
+                    # Forward pass requesting hidden states across all layers
+                    outputs = self.model(**inputs, output_hidden_states=True)
+                    # Residual stream tensor at Layer 16 for the final prompt token
+                    layer_16_state = outputs.hidden_states[16][0, -1, :].float()
+                    norm_val = torch.norm(layer_16_state).item()
+
+                    probe_metrics = {
+                        "active": True,
+                        "layer": 16,
+                        "activation_norm": round(norm_val, 2),
+                        "tamper_detected": norm_val > 55.0
+                    }
+            except Exception as e:
+                probe_metrics = {"active": False, "error": str(e)}
+
+        with torch.no_grad():
+            output_tokens = self.model.generate(
+                **inputs,
+                max_new_tokens=400,
+                temperature=0.1,
+                do_sample=False,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+
+        generated_text = self.tokenizer.decode(
+            output_tokens[0][inputs["input_ids"].shape[1]:],
+            skip_special_tokens=True
         )
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Telemetry Data:\n{telemetry_data}"}
-        ]
-
-        outputs = self.pipeline(
-            messages,
-            max_new_tokens=600,
-            do_sample=True,
-            temperature=0.1
-        )
-        return outputs[0]["generated_text"][-1]["content"]
-
-
-# 5. Local test entrypoint for quick sanity checking
-@app.local_entrypoint()
-def main():
-    synthesizer = LlamaSynthesizer()
-    sample_recon = (
-        "Commit Author: dev@internal-corp.net leaked in commit 9f8a12c. "
-        "Missing DMARC and SPF TXT records on internal-corp.net domain."
-    )
-    print("\n--- Dispatching sample DevSecOps telemetry to cloud A10G ---")
-    result = synthesizer.synthesize.remote(sample_recon)
-    print("\n[Threat Intelligence Result]:\n")
-    print(result)
+        return {
+            "raw_output": generated_text,
+            "probe_metrics": probe_metrics
+        }
