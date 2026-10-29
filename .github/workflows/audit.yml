@@ -1,0 +1,47 @@
+name: TraceGuard DevSecOps Gatekeeper
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  traceguard-sentinel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Authenticate Modal Labs
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET"
+
+      - name: Execute TraceGuard Sentinel Audit
+        run: |
+          python cli.py --probe --fail-on high --export audit-ledger.json
+
+      - name: Archive Cryptographic Audit Ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traceguard-audit-ledger
+          path: audit-ledger.json
+          retention-days: 14
