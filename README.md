@@ -1,69 +1,32 @@
-<div align="center">
+# TraceGuard: Autonomous DevSecOps Sentinel & Threat Gatekeeper
 
-# 🛡️ TraceGuard
+TraceGuard is an autonomous DevSecOps audit agent built for modern CI/CD supply chains. It combines static Git commit forensics, external perimeter DNS authentication checks, and automated secret/entropy detection with LLM threat synthesis powered by **Meta Llama 3.1 8B Instruct** hosted on **Modal (NVIDIA A10G)**.
 
-**Autonomous DevSecOps & Attack Surface Intelligence Agent**  
-*Built for the Meta AI Developer Hackathon 2026*
-
-[![Meta Llama 3](https://img.shields.io/badge/Model-Meta%20Llama%203-blue.svg)](https://ai.meta.com/)
-[![Modal Serverless](https://img.shields.io/badge/Compute-Modal%20Serverless-green.svg)](https://modal.com/)
-[![Integrity](https://img.shields.io/badge/Audit%20Ledger-SHA--256%20Sealed-brightgreen.svg)](#cryptographic-audit-ledger)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-</div>
+TraceGuard incorporates an active **Mechanistic Interpretability Probe** targeting Layer 16 residual stream activations to verify LLM inference integrity before enforcing security policy gates.
 
 ---
 
-## 📌 Overview
+## Key Features
 
-**TraceGuard** is an autonomous DevSecOps agent engineered to detect, correlate, and remediate identity-driven attack vectors across modern developer supply chains. 
-
-Adversaries routinely leverage public Git commit telemetry (names, internal emails, commit patterns) and correlate them with loose perimeter DNS hygiene (missing SPF/DMARC policies) to execute targeted credential stuffing and spear-phishing campaigns. TraceGuard eliminates this blind spot by running an autonomous ReAct reasoning loop that:
-
-1. **Probes Public Git Surface:** Uncovers developer identities, non-corporate author metadata, and repository footprints.
-2. **Audits Perimeter DNS Hygiene:** Queries DNS TXT infrastructure for SPF/DMARC spoofing vectors.
-3. **Pivots to Darknet Threat Intelligence:** Cross-references exposed identities against public breach corpora.
-4. **Synthesizes CVSS Exposure:** Calculates an actionable threat graph with structured remediation patches.
-5. **Cryptographically Seals Proof-of-Audit:** Compiles every finding into a canonical SHA-256 tamper-evident receipt.
+- **Autonomous Threat Synthesis**: Evaluates repository commit surfaces and perimeter posture using Meta Llama 3.1 8B Instruct.
+- **Layer 16 Interpretability Probe**: Measures hidden-state activation vector norms ($\Vert{}h_{\{16\}}\Vert{}$) to detect anomalous inference behavior or adversarial prompt tampering.
+- **Perimeter & DNS Forensics**: Audits SPF, DKIM, and DMARC enforcement across commit author domains to prevent email spoofing attacks.
+- **Credential & Secret Scanning**: Regex- and entropy-based heuristics identify exposed access tokens (Modal, GitHub, AWS, private keys) before code promotion.
+- **Tamper-Evident Ledger**: Generates canonical JSON audit ledgers validated by SHA-256 integrity digests.
+- **CI/CD Policy Gate Enforcement**: Programmatically passes or halts pipeline execution (`--fail-on high`) based on composite CVSS v3.1 risk scores.
 
 ---
 
-## 🏗️ Architecture
+## Architecture Overview
 
-[ Target Input ]
-│
-[ Sanitizer / Regex ]
-│
-┌──────────────┴──────────────┐
-▼                             ▼
-[ GitHub Metadata ]           [ DNS TXT Resolver ]
-│                             │
-└──────────────┬──────────────┘
-▼
-[ Threat Intelligence ]
-│
-▼
-┌───────────────────────────────────┐
-│   TraceGuard Autonomous Agent     │
-│   (Meta Llama 3 Reasoning Engine) │
-└─────────────────┬─────────────────┘
-▼
-┌───────────────────────────────────┐
-│    Cryptographic Ledger Sealer    │
-│    (Canonical SHA-256 Digest)     │
-└─────────────────┬─────────────────┘
-▼
-[ Colorized CLI / Tamper-Evident JSON ]
-
----
-
-## ⚡ Quick Start
-
-### 1. Clone & Set Up Virtual Environment
-
-```bash
-git clone https://github.com/priyanshujha12/traceguard-agent.git
-cd traceguard-agent
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+```text
+Local / CI Runner (cli.py)
+ ├── 1. Git Forensics (Commit Author Analysis)
+ ├── 2. DNS Perimeter Auditing (SPF / DMARC Verification)
+ ├── 3. Secret & Credential Scanning
+ ├── 4. Modal A10G Cloud Backend
+ │    ├── Meta Llama 3.1 8B Instruct
+ │    └── Layer 16 Residual Stream Activation Probe
+ ├── 5. Threat Assessment & Correlation Matrix
+ ├── 6. Tamper-Evident SHA-256 Ledger Export
+ └── 7. CI/CD Gate Enforcement (--fail-on [threshold])
