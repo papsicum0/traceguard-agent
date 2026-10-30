@@ -42,6 +42,10 @@ def scan_secrets(repo_path: str = ".") -> list:
         (r"gho_[0-9a-zA-Z]{36}", "GitHub OAuth Token"),
         (r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----", "Private Key Header"),
         (r"(?i)api[_-]?key\s*[:=]\s*['\"][a-zA-Z0-9_\-]{20,}['\"]", "Generic High-Entropy API Key"),
+    (r"eyJhbGciOiJSUzI1NiIs[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}", "Kubernetes Service Account JWT"),
+    (r"/var/run/secrets/kubernetes\.io/serviceaccount/token", "Hardcoded K8s Secret Path"),
+    (r"\b(ASIA[0-9A-Z]{16})\b", "AWS STS Temporary Session Credential"),
+    (r'"auth"\s*:\s*"[A-Za-z0-9+/=]{20,}"', "Container/Docker Registry Auth Config"),
     ]
     findings = []
     ignore_dirs = {".git", "venv", ".venv", "__pycache__", ".modal"}
